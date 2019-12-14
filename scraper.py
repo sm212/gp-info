@@ -22,11 +22,8 @@ def get_overview(practice_id):
 	soup = BeautifulSoup(page.content)
 
 	key_info = parse_key_info(soup)
-	doctor_info = parse_doctor_info(soup)
-
-	overview_info = {**key_info, **doctor_info}
-
-	return(overview_info)
+	
+	return(key_info)
 
 def parse_key_info(soup):
     "Parse data from the 'Key Information' box of an overview page"
@@ -42,9 +39,6 @@ def parse_key_info(soup):
     
     return(key_info)
 
-def parse_doctor_info(soup):
-	"Parse data from the 'Doctors' box of an overview page"
-	pass
 
 def get_reviews(practice_id, include_response = True):
 	"Get all reviews for practice ID"
