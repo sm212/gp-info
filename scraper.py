@@ -14,7 +14,20 @@ def get_practice_ids():
 
 def get_overview(practice_id):
 	"Get overview information for practice ID"
-	pass
+
+	base_url = 'https://www.nhs.uk/Services/GP/Overview/DefaultView.aspx?id={}'
+	url = base_url.format(practice_id)
+
+	page = r.get(url)
+	soup = BeautifulSoup(page.content)
+
+	key_info = parse_key_info(soup)
+	doctor_info = parse_doctor_info(soup)
+
+	overview_info = {**key_info, **doctor_info}
+
+	return(overview_info)
+
 
 def get_reviews(practice_id, include_response = True):
 	"Get all reviews for practice ID"
