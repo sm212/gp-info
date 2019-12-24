@@ -77,3 +77,37 @@ def get_reviews(practice_id):
 				   'ratings' : ratings, 'replies' : replies, 'reply_dates' : reply_dates}
 
 	return(review_dict)
+
+def parse_text(soup):
+	"Parse text from review and review responses"
+	
+	# For reviews, need the second paragraph.
+	# For replies, need the first paragraph
+	text = soup.find_all(name = 'p')[2].contents
+	if len(text) > 1:
+		# Only get here if grabbed the wrong paragraph
+		text = soup.find_all(name = 'p')[1].contents
+
+	return(text[0])
+
+def parse_date(soup):
+	"Parse date for a review or review responses"
+	
+	date = soup.find(class_ = 'nhsuk-body-s').contents[0].split()
+	year = date[-1]
+	month = date[-2]
+	day = date[-3]
+
+	month_lookup = {'January' : 1, 'February' : 2, 'March' : 3,
+					'April' : 4, 'May' : 5, 'June' : 6, 'July' : 7,
+					'August' : 8, 'September' : 9, 'October' : 10,
+					'November' : 11, 'December' : 12}
+
+	iso_date = f'{year}-{month_lookup[month]}-{day}'
+	return(iso_date)
+
+def parse_rating(soup):
+	"Parse rating for a review"
+	
+	rating = len(soup.find(class_= 'small-stars').contents[0])
+	return(rating)
