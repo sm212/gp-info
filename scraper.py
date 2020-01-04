@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 import requests as r
+import pandas as pd
 
 def get_practice_ids():
     "Returns a list of GP practice IDs from the NHS site"
@@ -57,12 +58,6 @@ def get_reviews(practice_id):
 	n_pages = n_reviews / 10 + (n_reviews % 10 > 0) # 10 reviews per page, need to round up
 	n_pages = int(n_pages)
 
-	reviews = []
-	review_dates = []
-	ratings = []
-	replies = []
-	reply_dates = []
-
 	for i in range(1, n_pages + 1):
 		url = base_url.format(practice_id, i)
 		page = r.get(url)
@@ -73,14 +68,14 @@ def get_reviews(practice_id):
 			review_soup = box.find(attrs = {'aria-label' : 'Organisation review'}) 
 			reply_soup = box.find(attrs = {'aria-label' : 'Organisation review response'})
 			
-			reviews.append(parse_text(review_soup))
-			review_dates.append(parse_date(review_soup))
-			ratings.append(parse_rating(review_soup))
-			replies.append(parse_text(reply_soup))
-			reply_dates.append(parse_date(reply_soup))
+			review = parse_text(review_soup)
+			review_date = parse_date(review_soup)
+			rating = parse_rating(review_soup)
+			reply = parse_text(reply_soup)
+			reply_date = parse_date(reply_soup)
 
-	review_dict = {'reviews' : reviews, 'review_dates' : review_dates,
-				   'ratings' : ratings, 'replies' : replies, 'reply_dates' : reply_dates}
+	review_dict = {'id' : i ,'review' : review, 'review_date' : review_date,
+				   'rating' : rating, 'reply' : reply, 'reply_date' : reply_date}
 
 	return(review_dict)
 
@@ -124,8 +119,11 @@ def parse_date(soup):
 def parse_rating(soup):
 	"Parse rating for a review"
 	
-	rating = len(soup.find(class_= 'small-stars').text)
-	return(rating)
+	try:
+		rating = len(soup.find(class_= 'small-stars').text)
+		return(rating)
+	except AttributeError:
+		return('No rating')
 
 def parse_key_info(soup):
 	"Parse data from the 'Key Information' box of an overview page"
@@ -142,22 +140,3 @@ def parse_key_info(soup):
 	else:
 		key_info = {'patients' : 'NA', 'would_rec' : 'NA', 'n_asked_rec' : 'NA'}
 	return(key_info)
-
-def valid_page(url):
-	"Checks if the practice profile is not hidden"
-	pass
-
-practice_ids = get_practice_ids()
-
-practice_overviews = {}
-practice_reviews = {}
-
-for practice_id in practice_ids:
-	print(practice_id)
-	overview = get_overview(practice_id)
-	reviews = get_reviews(practice_id)
-
-	practice_overviews[practice_id] = overview
-	practice_reviews[practice_id] = reviews
-
-
