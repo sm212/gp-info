@@ -12,14 +12,27 @@ def get_practice_ids():
     
     return(ids)
 
+def make_soup(url):
+	"Checks if the practice profile is not hidden"
+	
+	page = r.get(url)
+	soup = BeautifulSoup(page.content, 'lxml')
+	if soup.find(name = 'h1').text != 'Profile Hidden' and \
+	   soup.find('h1').text != 'Page not found.':	
+		return(soup)
+	else:
+		return(None)
+
 def get_overview(practice_id):
 	"Get overview information for practice ID"
 
 	base_url = 'https://www.nhs.uk/Services/GP/Overview/DefaultView.aspx?id={}'
 	url = base_url.format(practice_id)
+	soup = make_soup(url)
 
-	page = r.get(url)
-	soup = BeautifulSoup(page.content, 'lxml')
+	if soup is None:
+		print('Practice {} is hidden'.format(practice_id))
+		return(None)
 
 	key_info = parse_key_info(soup)
 
@@ -31,8 +44,14 @@ def get_reviews(practice_id):
 	base_url = 'https://www.nhs.uk/Review/List/P{}?currentpage={}'
 	url = base_url.format(practice_id, 1)
 
-	page = r.get(url)
-	soup = BeautifulSoup(page.content, 'lxml')
+	soup = make_soup(url)
+
+	if soup is None:
+		print('Practice {} is hidden'.format(practice_id))
+		return(None)
+	elif soup.find(class_ = 'nhsuk-u-margin-bottom-0') is None:
+		print('Practice {} has no reviews'.format(practice_id))
+		return(None)
 
 	n_reviews = int(soup.find(class_ = 'nhsuk-u-margin-bottom-0').text.split()[-1])
 	n_pages = n_reviews / 10 + (n_reviews % 10 > 0) # 10 reviews per page, need to round up
@@ -109,19 +128,24 @@ def parse_rating(soup):
 	return(rating)
 
 def parse_key_info(soup):
-    "Parse data from the 'Key Information' box of an overview page"
+	"Parse data from the 'Key Information' box of an overview page"
 
-    key_info_data = [tag.text for tag in soup.find_all(class_ = 'indicator-value')]
-    key_info_keys = ['patients', 'evening_weekend', 'would_rec']
-    key_info = {key: data for key, data in zip(key_info_keys, key_info_data)}
+	key_info_data = [tag.text for tag in soup.find_all(class_ = 'indicator-value')]
+	key_info_keys = ['patients', 'evening_weekend', 'would_rec']
 
-    # Fix datatypes & add in survey response numbers
-    key_info['patients'] = int(key_info['patients'])
-    key_info['would_rec'] = int(key_info['would_rec'][:-1]) / 100
-    key_info['n_asked_rec'] = int(soup.find_all(class_ = 'indicator-text')[-1].text.split()[-2])
-    
-    return(key_info)
+	if len(key_info_data) == 3:
+		key_info = {key: data for key, data in zip(key_info_keys, key_info_data)}
+		# Fix datatypes & add in survey response numbers
+		key_info['patients'] = int(key_info['patients'])
+		key_info['would_rec'] = int(key_info['would_rec'][:-1]) / 100
+		key_info['n_asked_rec'] = int(soup.find_all(class_ = 'indicator-text')[-1].text.split()[-2])
+	else:
+		key_info = {'patients' : 'NA', 'would_rec' : 'NA', 'n_asked_rec' : 'NA'}
+	return(key_info)
 
+def valid_page(url):
+	"Checks if the practice profile is not hidden"
+	pass
 
 practice_ids = get_practice_ids()
 
