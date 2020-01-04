@@ -5,7 +5,7 @@ def get_practice_ids():
     "Returns a list of GP practice IDs from the NHS site"
 
     page = r.get('https://www.nhs.uk/Services/Pages/HospitalList.aspx?chorg=GpBranch')
-    soup = BeautifulSoup(page.content)
+    soup = BeautifulSoup(page.content, 'lxml')
     
     links = [link.get('href') for link in soup.find_all('a')]
     ids = [link.split('=')[1] for link in links if '=' in link]
@@ -19,25 +19,11 @@ def get_overview(practice_id):
 	url = base_url.format(practice_id)
 
 	page = r.get(url)
-	soup = BeautifulSoup(page.content)
+	soup = BeautifulSoup(page.content, 'lxml')
 
 	key_info = parse_key_info(soup)
 
 	return(key_info)
-
-def parse_key_info(soup):
-    "Parse data from the 'Key Information' box of an overview page"
-
-    key_info_data = [tag.contents[0] for tag in soup.find_all(class_ = 'indicator-value')]
-    key_info_keys = ['patients', 'evening_weekend', 'would_rec']
-    key_info = {key: data for key, data in zip(key_info_keys, key_info_data)}
-
-    # Fix datatypes & add in survey response numbers
-    key_info['patients'] = int(key_info['patients'])
-    key_info['would_rec'] = int(key_info['would_rec']) / 100
-    key_info['n_asked_rec'] = int(soup.find_all(class_ = 'indicator-text')[-1].contents[0].split()[-2])
-    
-    return(key_info)
 
 def get_reviews(practice_id):
 	"Get all reviews for practice ID"
@@ -46,10 +32,11 @@ def get_reviews(practice_id):
 	url = base_url.format(practice_id, 1)
 
 	page = r.get(url)
-	soup = BeautifulSoup(page.content)
+	soup = BeautifulSoup(page.content, 'lxml')
 
 	n_reviews = int(soup.find(class_ = 'nhsuk-u-margin-bottom-0').text.split()[-1])
 	n_pages = n_reviews / 10 + (n_reviews % 10 > 0) # 10 reviews per page, need to round up
+	n_pages = int(n_pages)
 
 	reviews = []
 	review_dates = []
@@ -60,7 +47,7 @@ def get_reviews(practice_id):
 	for i in range(1, n_pages + 1):
 		url = base_url.format(practice_id, i)
 		page = r.get(url)
-		soup = BeautifulSoup(page.content)
+		soup = BeautifulSoup(page.content, 'lxml')
 
 		review_boxes = soup.find_all(attrs = {'role' : 'listitem'})
 		for box in review_boxes:
@@ -80,34 +67,73 @@ def get_reviews(practice_id):
 
 def parse_text(soup):
 	"Parse text from review and review responses"
-	
-	# For reviews, need the second paragraph.
-	# For replies, need the first paragraph
-	text = soup.find_all(name = 'p')[2].contents
-	if len(text) > 1:
-		# Only get here if grabbed the wrong paragraph
-		text = soup.find_all(name = 'p')[1].contents
 
-	return(text[0])
+	p_tags = soup.find_all(name = 'p')
+
+	if len(p_tags) == 1:
+		return('No reply')
+	else:
+		# Text will be the longest paragraph - all other <p> tags
+		# are metadata
+		lengths = [len(p.text) for p in p_tags]
+		review_index = lengths.index(max(lengths))
+		
+		return(p_tags[review_index].text)
 
 def parse_date(soup):
 	"Parse date for a review or review responses"
 	
-	date = soup.find(class_ = 'nhsuk-body-s').contents[0].split()
-	year = date[-1]
-	month = date[-2]
-	day = date[-3]
+	unparsed_date = soup.find(class_ = 'nhsuk-body-s')
+	if unparsed_date is not None:
+		date = unparsed_date.text.split()
+		year = date[-1]
+		month = date[-2]
+		day = date[-3]
 
-	month_lookup = {'January' : 1, 'February' : 2, 'March' : 3,
-					'April' : 4, 'May' : 5, 'June' : 6, 'July' : 7,
-					'August' : 8, 'September' : 9, 'October' : 10,
-					'November' : 11, 'December' : 12}
+		month_lookup = {'January' : 1, 'February' : 2, 'March' : 3,
+						'April' : 4, 'May' : 5, 'June' : 6, 'July' : 7,
+						'August' : 8, 'September' : 9, 'October' : 10,
+						'November' : 11, 'December' : 12}
 
-	iso_date = f'{year}-{month_lookup[month]}-{day}'
-	return(iso_date)
+		iso_date = f'{year}-{month_lookup[month]:00}-{day}'
+		return(iso_date)
+	else:
+		# Only way to get here is if there is no date, which can
+		# only happen if there's no reply (every review is dated)
+		return('No reply')
 
 def parse_rating(soup):
 	"Parse rating for a review"
 	
-	rating = len(soup.find(class_= 'small-stars').contents[0])
+	rating = len(soup.find(class_= 'small-stars').text)
 	return(rating)
+
+def parse_key_info(soup):
+    "Parse data from the 'Key Information' box of an overview page"
+
+    key_info_data = [tag.text for tag in soup.find_all(class_ = 'indicator-value')]
+    key_info_keys = ['patients', 'evening_weekend', 'would_rec']
+    key_info = {key: data for key, data in zip(key_info_keys, key_info_data)}
+
+    # Fix datatypes & add in survey response numbers
+    key_info['patients'] = int(key_info['patients'])
+    key_info['would_rec'] = int(key_info['would_rec'][:-1]) / 100
+    key_info['n_asked_rec'] = int(soup.find_all(class_ = 'indicator-text')[-1].text.split()[-2])
+    
+    return(key_info)
+
+
+practice_ids = get_practice_ids()
+
+practice_overviews = {}
+practice_reviews = {}
+
+for practice_id in practice_ids:
+	print(practice_id)
+	overview = get_overview(practice_id)
+	reviews = get_reviews(practice_id)
+
+	practice_overviews[practice_id] = overview
+	practice_reviews[practice_id] = reviews
+
+
