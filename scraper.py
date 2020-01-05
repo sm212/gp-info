@@ -1,11 +1,13 @@
 from bs4 import BeautifulSoup
 import requests as r
 import pandas as pd
+import re
 
 def get_practice_ids():
     "Returns a list of GP practice IDs from the NHS site"
 
-    page = r.get('https://www.nhs.uk/Services/Pages/HospitalList.aspx?chorg=GpBranch')
+    url = 'https://www.nhs.uk/Services/Pages/HospitalList.aspx?chorg=GpBranch'
+    page = r.get(url)
     soup = BeautifulSoup(page.content, 'lxml')
     
     links = [link.get('href') for link in soup.find_all('a')]
@@ -14,7 +16,7 @@ def get_practice_ids():
     return(ids)
 
 def make_soup(url):
-	"Checks if the practice profile is not hidden"
+	"Returns BeautifulSoup(url), provided the url is viewable"
 	
 	page = r.get(url)
 	soup = BeautifulSoup(page.content, 'lxml')
@@ -32,10 +34,10 @@ def get_overview(practice_id):
 	soup = make_soup(url)
 
 	if soup is None:
-		print('Practice {} is hidden'.format(practice_id))
 		return(None)
 
 	key_info = parse_key_info(soup)
+	key_info['practice_id'] = practice_id
 
 	return(key_info)
 
@@ -48,15 +50,17 @@ def get_reviews(practice_id):
 	soup = make_soup(url)
 
 	if soup is None:
-		print('Practice {} is hidden'.format(practice_id))
 		return(None)
 	elif soup.find(class_ = 'nhsuk-u-margin-bottom-0') is None:
-		print('Practice {} has no reviews'.format(practice_id))
 		return(None)
 
-	n_reviews = int(soup.find(class_ = 'nhsuk-u-margin-bottom-0').text.split()[-1])
-	n_pages = n_reviews / 10 + (n_reviews % 10 > 0) # 10 reviews per page, need to round up
+	n_reviews = soup.find(class_ = 'nhsuk-u-margin-bottom-0').text.split()[-1]
+	n_reviews = int(n_reviews)
+	n_pages = n_reviews / 10 + (n_reviews % 10 > 0) # 10 reviews per page
 	n_pages = int(n_pages)
+
+	review_list = []
+	review_id = 0
 
 	for i in range(1, n_pages + 1):
 		url = base_url.format(practice_id, i)
@@ -65,19 +69,25 @@ def get_reviews(practice_id):
 
 		review_boxes = soup.find_all(attrs = {'role' : 'listitem'})
 		for box in review_boxes:
-			review_soup = box.find(attrs = {'aria-label' : 'Organisation review'}) 
-			reply_soup = box.find(attrs = {'aria-label' : 'Organisation review response'})
+			review_id += 1
+
+			review_soup = box.find(attrs = {'aria-label' : 
+												'Organisation review'}) 
+			reply_soup = box.find(attrs = {'aria-label' : 
+												'Organisation review response'})
 			
-			review = parse_text(review_soup)
-			review_date = parse_date(review_soup)
-			rating = parse_rating(review_soup)
-			reply = parse_text(reply_soup)
-			reply_date = parse_date(reply_soup)
+			review = {}
+			review['practice_id'] = practice_id
+			review['review_id'] = review_id
+			review['review'] = parse_text(review_soup)
+			review['review_date'] = parse_date(review_soup)
+			review['rating'] = parse_rating(review_soup)
+			review['reply'] = parse_text(reply_soup)
+			review['reply_date'] = parse_date(reply_soup)
 
-	review_dict = {'id' : i ,'review' : review, 'review_date' : review_date,
-				   'rating' : rating, 'reply' : reply, 'reply_date' : reply_date}
+			review_list.append(review)
 
-	return(review_dict)
+	return(review_list)
 
 def parse_text(soup):
 	"Parse text from review and review responses"
@@ -91,8 +101,11 @@ def parse_text(soup):
 		# are metadata
 		lengths = [len(p.text) for p in p_tags]
 		review_index = lengths.index(max(lengths))
-		
-		return(p_tags[review_index].text)
+
+		# Remove special characters
+		text = p_tags[review_index].text
+		text = re.sub(r'[^\w\d\s ,?/!:;_£\-\.]', '', text)
+		return(text)
 
 def parse_date(soup):
 	"Parse date for a review or review responses"
@@ -128,15 +141,30 @@ def parse_rating(soup):
 def parse_key_info(soup):
 	"Parse data from the 'Key Information' box of an overview page"
 
-	key_info_data = [tag.text for tag in soup.find_all(class_ = 'indicator-value')]
-	key_info_keys = ['patients', 'evening_weekend', 'would_rec']
+	indicator_vals = [t.text for t in soup.find_all(class_ = 'indicator-value')]
+	indicator_text = [t.text for t in soup.find_all(class_ = 'indicator-text')]
 
-	if len(key_info_data) == 3:
-		key_info = {key: data for key, data in zip(key_info_keys, key_info_data)}
-		# Fix datatypes & add in survey response numbers
-		key_info['patients'] = int(key_info['patients'])
-		key_info['would_rec'] = int(key_info['would_rec'][:-1]) / 100
-		key_info['n_asked_rec'] = int(soup.find_all(class_ = 'indicator-text')[-1].text.split()[-2])
-	else:
-		key_info = {'patients' : 'NA', 'would_rec' : 'NA', 'n_asked_rec' : 'NA'}
+	key_info = {}
+
+	for i in range(len(indicator_text)):
+		val = indicator_vals[i]
+		text = indicator_text[i]
+
+		if 'patients' in text:
+			key_info['patients'] = val
+		elif 'patients' not in key_info.keys():
+			key_info['patients'] = 'NA'
+
+		if 'availability' in text:
+			key_info['evening_weekend'] = val
+		elif 'evening_weekend' not in key_info.keys():
+			key_info['evening_weekend'] = 'NA'
+
+		if 'recommend' in text:
+			key_info['would_rec'] = val
+			key_info['n_asked'] = text.split()[-2]
+		elif 'would_rec' not in key_info.keys():
+			key_info['would_rec'] = 'NA'
+			key_info['n_asked'] = 'NA'
+
 	return(key_info)
