@@ -168,3 +168,35 @@ def parse_key_info(soup):
 			key_info['n_asked'] = 'NA'
 
 	return(key_info)
+
+practice_ids = get_practice_ids()
+
+key_info = []
+reviews = []
+
+for i, practice_id in enumerate(practice_ids):
+
+	info = get_overview(practice_id)
+	if info is None:
+		print('{} / {}  -  Practice ID {} is hidden'.format(i + 1,
+															len(practice_ids),
+															practice_id))
+	else:
+		key_info.append(info)
+
+	review = get_reviews(practice_id)
+	if info is not None and review is None:
+		print('{} / {}  -  Practice ID {} has no reviews'.format(i + 1,
+															len(practice_ids),
+															practice_id))
+	if review is not None:
+		reviews.extend(review)
+		print('{} / {}  -  Got data for Practice ID {}'.format(i + 1,
+															  len(practice_ids),
+															  practice_id))
+
+df_key_info = pd.DataFrame(key_info)
+df_reviews = pd.DataFrame(reviews)
+
+df_key_info.to_csv('key_info.csv', index=False)
+df_reviews.to_csv('reviews.csv', index=False)
