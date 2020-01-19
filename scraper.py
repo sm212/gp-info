@@ -37,7 +37,9 @@ def get_overview(practice_id):
 		return(None)
 
 	key_info = parse_key_info(soup)
+	address = parse_address(soup)
 	key_info['practice_id'] = practice_id
+	key_info['address'] = address
 
 	return(key_info)
 
@@ -71,10 +73,8 @@ def get_reviews(practice_id):
 		for box in review_boxes:
 			review_id += 1
 
-			review_soup = box.find(attrs = {'aria-label' : 
-												'Organisation review'}) 
-			reply_soup = box.find(attrs = {'aria-label' : 
-												'Organisation review response'})
+			review_soup = box.find(attrs = {'aria-label' : 'Organisation review'}) 
+			reply_soup = box.find(attrs = {'aria-label' : 'Organisation review response'})
 			
 			review = {}
 			review['practice_id'] = practice_id
@@ -118,9 +118,9 @@ def parse_date(soup):
 		day = date[-3]
 
 		month_lookup = {'January' : 1, 'February' : 2, 'March' : 3,
-						'April' : 4, 'May' : 5, 'June' : 6, 'July' : 7,
-						'August' : 8, 'September' : 9, 'October' : 10,
-						'November' : 11, 'December' : 12}
+		'April' : 4, 'May' : 5, 'June' : 6, 'July' : 7,
+		'August' : 8, 'September' : 9, 'October' : 10,
+		'November' : 11, 'December' : 12}
 
 		iso_date = f'{year}-{month_lookup[month]:00}-{day}'
 		return(iso_date)
@@ -169,6 +169,12 @@ def parse_key_info(soup):
 
 	return(key_info)
 
+def parse_address(soup):
+	"Get adress from practise overview"
+
+	address = soup.find(attrs = {'typeof' : 'PostalAddress'}).text.strip()
+	return(re.sub(r'\s{2}', '', address))
+
 practice_ids = get_practice_ids()
 
 key_info = []
@@ -178,22 +184,16 @@ for i, practice_id in enumerate(practice_ids):
 
 	info = get_overview(practice_id)
 	if info is None:
-		print('{} / {}  -  Practice ID {} is hidden'.format(i + 1,
-															len(practice_ids),
-															practice_id))
+		print('{} / {}  -  Practice ID {} is hidden'.format(i + 1, len(practice_ids), practice_id))
 	else:
 		key_info.append(info)
 
 	review = get_reviews(practice_id)
 	if info is not None and review is None:
-		print('{} / {}  -  Practice ID {} has no reviews'.format(i + 1,
-															len(practice_ids),
-															practice_id))
+		print('{} / {}  -  Practice ID {} has no reviews'.format(i + 1, len(practice_ids), practice_id))
 	if review is not None:
 		reviews.extend(review)
-		print('{} / {}  -  Got data for Practice ID {}'.format(i + 1,
-															  len(practice_ids),
-															  practice_id))
+		print('{} / {}  -  Got data for Practice ID {}'.format(i + 1, len(practice_ids), practice_id))
 
 df_key_info = pd.DataFrame(key_info)
 df_reviews = pd.DataFrame(reviews)
